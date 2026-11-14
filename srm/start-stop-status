@@ -157,6 +157,16 @@ grant_operator() {
     fi
 }
 
+# Tailscale's default after login points this host at 100.100.100.100.
+# On a router, that replaces the router's own resolver. The preference
+# survives login and is applied again on every start.
+disable_dns() {
+    note "Turning Tailscale DNS off."
+    if ! "${PKGDEST}/bin/tailscale" --socket="${SOCKET_FILE}" set --accept-dns=false >>"${LOG}" 2>&1; then
+        note "Could not turn Tailscale DNS off. See ${LOG}."
+    fi
+}
+
 publish_ui() {
     mkdir -p /usr/syno/synoman/webman/3rdparty
     if [ -L "${UI_LINK}" ]; then
@@ -201,28 +211,36 @@ stop_daemon() {
     fi
 }
 
-case "${1:-}" in
-start)
-    publish_ui
-    if [ -n "$(pids)" ]; then
-        expose_socket
+main() {
+    case "${1:-}" in
+    start)
+        publish_ui
+        if [ -n "$(pids)" ]; then
+            expose_socket
+            grant_operator
+            disable_dns
+            return 0
+        fi
+        start_daemon
         grant_operator
-        exit 0
-    fi
-    start_daemon
-    grant_operator
-    ;;
-stop)
-    stop_daemon
-    unpublish_ui
-    ;;
-status)
-    if [ -n "$(pids)" ]; then
-        exit 0
-    fi
-    exit 3
-    ;;
-*)
-    exit 0
-    ;;
-esac
+        disable_dns
+        ;;
+    stop)
+        stop_daemon
+        unpublish_ui
+        ;;
+    status)
+        if [ -n "$(pids)" ]; then
+            return 0
+        fi
+        return 3
+        ;;
+    *)
+        return 0
+        ;;
+    esac
+}
+
+if [ "${0##*/}" = "start-stop-status" ]; then
+    main "$@"
+fi

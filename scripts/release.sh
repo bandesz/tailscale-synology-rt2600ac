@@ -58,11 +58,7 @@ The binaries are Tailscale's armv7 DSM 7 build. This repository only repackages 
 3. Start Tailscale.
 4. Open it from the SRM main menu, or browse to \`http://<router>:8000/webman/3rdparty/Tailscale/index.cgi/\`.
 
-On a router, turn Tailscale DNS off after logging in, or the router's own resolver is replaced:
-
-\`\`\`
-/var/packages/Tailscale/target/bin/tailscale set --accept-dns=false
-\`\`\`
+Starting the package turns Tailscale DNS off (\`tailscale set --accept-dns=false\`) so the router keeps its own resolver. Other devices on the tailnet are unchanged.
 EOF
 )
 

@@ -43,15 +43,11 @@ The page is Tailscale's own web UI (`tailscale web`), served by SRM's admin Apac
 
 ### DNS on a router
 
-After the node is logged in, turn Tailscale DNS off. If it stays on, the router starts resolving through `100.100.100.100` and can lose its own internet connectivity.
+Each time the service starts, the package runs `tailscale set --accept-dns=false`. Tailscale's default after login is to send this machine's DNS queries to `100.100.100.100`. On the RT2600ac that machine is the router, so leaving the default on replaces the router's resolver and can take its own internet lookups down with it.
 
-SSH to the router and run:
+The setting is stored with the node and applied again on every start, including after a reboot. Other devices on the tailnet keep the DNS settings from the Tailscale admin console. Turning DNS back on in the Tailscale web UI lasts until the next time this service starts.
 
-```sh
-/var/packages/Tailscale/target/bin/tailscale set --accept-dns=false
-```
-
-The package also links that binary at `/usr/local/bin/tailscale` when the service is running.
+The package links the CLI at `/usr/local/bin/tailscale` when the service is running.
 
 ### Direct connections
 
@@ -118,7 +114,7 @@ If that release already exists, the SPK is uploaded again and replaces the previ
 Package Center calls `srm/start-stop-status`.
 
 - **start** loads the `tun` kernel module, creates `/dev/net/tun`, and starts `tailscaled` with its state and socket under `/var/packages/Tailscale/var`. The socket path matches what the `tailscale` binary looks for on anything other than DSM 6. SRM's version file is major version 1, so it is not treated as DSM 6.
-- **start** also publishes the web UI into `/usr/syno/synoman/webman/3rdparty/Tailscale` and, when it can see the admin web server's account, runs `tailscale set --operator` for that account.
+- **start** also publishes the web UI into `/usr/syno/synoman/webman/3rdparty/Tailscale`, runs `tailscale set --accept-dns=false`, and, when it can see the admin web server's account, runs `tailscale set --operator` for that account.
 - **stop** stops the daemon and removes the UI files.
 - **status** exits 0 when `tailscaled` is running and 3 when it is stopped.
 
