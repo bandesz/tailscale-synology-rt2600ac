@@ -309,18 +309,25 @@ read_route_list() {
 # them. Tailscale on Synology forwards the approved routes in userspace, so
 # this does not install iptables rules.
 #
-# /var/packages/Tailscale/var/advertise-routes, when present, is the list to
-# offer (empty means offer none). Without that file, connected private IPv4
-# routes are used. Finding none leaves whatever is already advertised.
+# advertise-lan holds the install wizard's answer: "false" offers nothing,
+# including when advertise-routes names prefixes. Any other contents, and a
+# missing file, leave the offer on. advertise-routes, when present, is then
+# the list to offer (empty means offer none). Without that file, connected
+# private IPv4 routes are used. Finding none leaves whatever is already
+# advertised.
 advertise_routes() {
-    route_file="${STATE_DIR}/advertise-routes"
-    if [ -f "${route_file}" ]; then
-        adv_routes=$(read_route_list "${route_file}")
+    if [ "$(offer_choice "${STATE_DIR}/advertise-lan")" = "false" ]; then
+        adv_routes=""
     else
-        adv_routes=$(lan_routes_from_proc "${ROUTE_TABLE:-/proc/net/route}" 2>>"${LOG}") || adv_routes=""
-        if [ -z "${adv_routes}" ]; then
-            printf '%s\n' "$(date) no LAN routes detected" >>"${LOG}"
-            return 0
+        route_file="${STATE_DIR}/advertise-routes"
+        if [ -f "${route_file}" ]; then
+            adv_routes=$(read_route_list "${route_file}")
+        else
+            adv_routes=$(lan_routes_from_proc "${ROUTE_TABLE:-/proc/net/route}" 2>>"${LOG}") || adv_routes=""
+            if [ -z "${adv_routes}" ]; then
+                printf '%s\n' "$(date) no LAN routes detected" >>"${LOG}"
+                return 0
+            fi
         fi
     fi
     printf '%s\n' "$(date) advertising routes: ${adv_routes}" >>"${LOG}"
@@ -329,9 +336,60 @@ advertise_routes() {
     fi
 }
 
+# "false" turns an offer off. A missing file stays on: the install page was
+# skipped, or this is an upgrade from a package that did not ask.
+offer_choice() {
+    choice_file=$1
+    if [ ! -f "${choice_file}" ]; then
+        printf 'true\n'
+        return 0
+    fi
+    value=$(tr -d '[:space:]' < "${choice_file}")
+    case "${value}" in
+    false) printf 'false\n' ;;
+    *) printf 'true\n' ;;
+    esac
+}
+
+write_offer() {
+    case "$2" in
+    true) printf 'true\n' > "$1" ;;
+    *) printf 'false\n' > "$1" ;;
+    esac
+}
+
+# Package Center exports each checkbox as "true" or leaves it unset when
+# cleared. Unset for both means the page was not shown, and a saved answer
+# has to stay. Unset for one means that box was cleared.
+save_offers() {
+    if [ -z "${wizard_advertise_routes+x}" ] && [ -z "${wizard_advertise_exit_node+x}" ]; then
+        return 0
+    fi
+    mkdir -p "${STATE_DIR}"
+    write_offer "${STATE_DIR}/advertise-lan" "${wizard_advertise_routes-}"
+    write_offer "${STATE_DIR}/advertise-exit-node" "${wizard_advertise_exit_node-}"
+}
+
+# Same approval step as subnet routes. On until advertise-exit-node says
+# "false". Applied with the routes, after the node is logged in, because an
+# upgrade drops the node key and the login that follows replaces prefs.
+advertise_exit_node() {
+    choice=$(offer_choice "${STATE_DIR}/advertise-exit-node")
+    if [ "${choice}" = "false" ]; then
+        flag="--advertise-exit-node=false"
+    else
+        flag="--advertise-exit-node=true"
+    fi
+    printf '%s\n' "$(date) advertising exit node: ${choice}" >>"${LOG}"
+    if ! "${PKGDEST}/bin/tailscale" --socket="${SOCKET_FILE}" set "${flag}" >>"${LOG}" 2>&1; then
+        note "Could not advertise the exit node. See ${LOG}."
+    fi
+}
+
 # SRM replaces /var/packages/Tailscale/var on upgrade. /usr/syno/etc/packages
-# is left in place, so the node key is kept there as well as in the upgrade
-# scratch directory Package Center passes to preupgrade and postupgrade.
+# is left in place, so the node key and the routing choices are kept there
+# as well as in the upgrade scratch directory Package Center passes to
+# preupgrade and postupgrade.
 package_etc_dir() {
     if [ -n "${STATE_BACKUP_DIR:-}" ]; then
         printf '%s\n' "${STATE_BACKUP_DIR}"
@@ -340,22 +398,61 @@ package_etc_dir() {
     printf '%s\n' "/usr/syno/etc/packages/${SYNOPKG_PKGNAME}"
 }
 
-backup_state() {
-    if [ ! -s "${STATE_FILE}" ]; then
+backup_named() {
+    src=$1
+    name=$2
+    if [ ! -s "${src}" ]; then
         return 0
     fi
     if [ -n "${SYNOPKG_TEMP_UPGRADE_FOLDER:-}" ]; then
-        cp -f "${STATE_FILE}" "${SYNOPKG_TEMP_UPGRADE_FOLDER}/tailscaled.state" || true
+        cp -f "${src}" "${SYNOPKG_TEMP_UPGRADE_FOLDER}/${name}" || true
     fi
     etc_dir=$(package_etc_dir)
     mkdir -p "${etc_dir}" 2>/dev/null || true
     if [ -d "${etc_dir}" ]; then
-        cp -f "${STATE_FILE}" "${etc_dir}/tailscaled.state" || true
-        chmod 600 "${etc_dir}/tailscaled.state" 2>/dev/null || true
+        cp -f "${src}" "${etc_dir}/${name}" || true
+    fi
+}
+
+backup_state() {
+    if [ -s "${STATE_FILE}" ]; then
+        backup_named "${STATE_FILE}" tailscaled.state
+        etc_dir=$(package_etc_dir)
+        if [ -f "${etc_dir}/tailscaled.state" ]; then
+            chmod 600 "${etc_dir}/tailscaled.state" 2>/dev/null || true
+        fi
+    fi
+    backup_named "${STATE_DIR}/advertise-lan" advertise-lan
+    backup_named "${STATE_DIR}/advertise-exit-node" advertise-exit-node
+}
+
+restore_named() {
+    name=$1
+    dest="${STATE_DIR}/${name}"
+    if [ -s "${dest}" ]; then
+        return 0
+    fi
+    src=""
+    if [ -n "${SYNOPKG_TEMP_UPGRADE_FOLDER:-}" ] && [ -s "${SYNOPKG_TEMP_UPGRADE_FOLDER}/${name}" ]; then
+        src="${SYNOPKG_TEMP_UPGRADE_FOLDER}/${name}"
+    else
+        etc_dir=$(package_etc_dir)
+        if [ -s "${etc_dir}/${name}" ]; then
+            src="${etc_dir}/${name}"
+        fi
+    fi
+    if [ -z "${src}" ]; then
+        return 0
+    fi
+    mkdir -p "${STATE_DIR}"
+    if ! cp -f "${src}" "${dest}"; then
+        note "Could not restore ${name}."
     fi
 }
 
 restore_state() {
+    restore_named advertise-lan
+    restore_named advertise-exit-node
     if [ -s "${STATE_FILE}" ]; then
         return 0
     fi
@@ -385,10 +482,11 @@ node_is_up() {
 
 # Route advertisement at the moment of start is too early: an upgrade drops
 # the node key, and the menu login that follows replaces prefs. Wait until
-# the node is actually up, then offer the LANs.
+# the node is actually up, then offer the LANs and the exit node.
 ensure_routes() {
     if node_is_up; then
         advertise_routes
+        advertise_exit_node
         backup_state
         return 0
     fi
@@ -405,6 +503,7 @@ wait_and_advertise() {
     while [ "${attempt}" -lt "${ADVERTISE_ATTEMPTS:-150}" ]; do
         if node_is_up; then
             advertise_routes
+            advertise_exit_node
             backup_state
             return 0
         fi

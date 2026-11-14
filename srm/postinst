@@ -1,6 +1,11 @@
 #!/bin/sh
 # Package Center creates the user from conf/privilege and then starts
 # the service. State lives beside the package, not in target/, because
-# an upgrade replaces target/.
+# an upgrade replaces target/. The wizard answers are saved here too.
+# start-stop-status reads them on every start; this script does not run then.
+set -eu
 mkdir -p "${SYNOPKG_PKGVAR:-/var/packages/${SYNOPKG_PKGNAME}/var}"
+# shellcheck disable=SC1091
+. "$(dirname "$0")/start-stop-status"
+save_offers
 exit 0

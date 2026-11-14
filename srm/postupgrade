@@ -1,7 +1,9 @@
 #!/bin/sh
-# Put the node key back if the upgrade removed var/. start restores it
-# again if this script did not run.
+# Put the node key and routing choices back if the upgrade removed var/.
+# An answer from the upgrade page replaces a restored choice. start
+# restores the files again if this script did not run.
 set -eu
 # shellcheck disable=SC1091
 . "$(dirname "$0")/start-stop-status"
 restore_state
+save_offers

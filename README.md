@@ -25,7 +25,8 @@ Download `tailscale-ipq806x-<version>-srm1.3.spk` from the Releases page of this
 1. Open Package Center on the router.
 2. Set the trust level to **Any publisher**. The package is unsigned, which is the same situation as other unsigned SRM packages. The setting is under Package Center settings.
 3. Choose **Manual Install** and select the `.spk` file.
-4. Start **Tailscale** after installation.
+4. On the **Tailscale routing** step, leave both boxes checked or clear the ones you do not want. **Advertise LAN subnets** offers this router's LANs. **Advertise as an exit node** offers this router's internet connection. The same step is shown again when the package is upgraded, with the saved choices already filled in.
+5. Start **Tailscale** after installation.
 
 Package Center creates the service, starts it on boot, and keeps Tailscale's state across upgrades. State is stored in `/var/packages/Tailscale/var`, which an upgrade does not replace.
 
@@ -49,13 +50,17 @@ The setting is stored with the node and applied again on every start, including 
 
 The package links the CLI at `/usr/local/bin/tailscale` when the service is running.
 
-### Subnet routes
+### Subnet routes and exit node
 
-On each start the package turns on IPv4 forwarding and advertises the router's LAN subnets: private IPv4 networks that are directly connected, excluding the WAN interface (the one with the default route) and `tailscale0`. The page in the SRM menu is Tailscale's login UI and does not edit subnet routes, so the service sets them. If the node is not logged in yet, it waits and advertises once login finishes.
+On each start the package turns on IPv4 forwarding and applies the choices from installation. If the node is not logged in yet, it waits and applies them once login finishes. The page in the SRM menu does not edit these offers.
 
-Approve the routes in the [Tailscale admin console](https://login.tailscale.com/admin/machines) before other devices can use them. Tailscale on Synology forwards approved subnet traffic in userspace (TCP and UDP). This package does not add iptables rules.
+Approve them in the [Tailscale admin console](https://login.tailscale.com/admin/machines) before other devices can use them. Tailscale on Synology forwards approved traffic in userspace (TCP and UDP). This package does not add iptables rules. The router cannot itself send its traffic through some other exit node.
 
-To advertise a different list, write the prefixes to `/var/packages/Tailscale/var/advertise-routes`, separated by commas or whitespace. An empty file advertises no routes. Delete the file to go back to detecting the LANs. Exit-node advertisement is left as it is.
+**Advertise LAN subnets** offers the private IPv4 networks that are directly connected, excluding the WAN interface (the one with the default route) and `tailscale0`. To advertise a different list, write the prefixes to `/var/packages/Tailscale/var/advertise-routes`, separated by commas or whitespace. An empty file advertises no routes. Delete the file to go back to detecting the LANs. That file is ignored while the LAN choice is off.
+
+**Advertise as an exit node** offers this router as an exit node (`tailscale set --advertise-exit-node`). Other devices can select it after the admin console approval.
+
+The choices are stored as `true` or `false` in `/var/packages/Tailscale/var/advertise-lan` and `/var/packages/Tailscale/var/advertise-exit-node`. A missing file stays on, which is what happens when Package Center does not show the routing step. The files are kept across an upgrade together with the node key. Change a choice by upgrading the package, or by writing `true` or `false` into the file and restarting the service.
 
 ### Direct connections
 
@@ -91,7 +96,7 @@ What the build does:
 | Task | Purpose |
 | --- | --- |
 | `mise run lint` | shellcheck on the scripts |
-| `mise run test` | Synology version numbers, DNS off on start, and LAN route advertisement |
+| `mise run test` | Synology version numbers, DNS off on start, LAN route advertisement, and the install routing choices |
 | `mise run build` | Download Tailscale and build the SPK |
 | `mise run ci` | lint, test, and build |
 | `mise run release` | Build and attach the SPK to a GitHub release |
@@ -122,7 +127,7 @@ If that release already exists, the SPK is uploaded again and replaces the previ
 Package Center calls `srm/start-stop-status`.
 
 - **start** loads the `tun` kernel module, creates `/dev/net/tun`, and starts `tailscaled` with its state and socket under `/var/packages/Tailscale/var`. The socket path matches what the `tailscale` binary looks for on anything other than DSM 6. SRM's version file is major version 1, so it is not treated as DSM 6.
-- **start** also publishes the web UI into `/usr/syno/synoman/webman/3rdparty/Tailscale`, runs `tailscale set --accept-dns=false`, enables IPv4 forwarding, advertises the LAN subnets with `tailscale set --advertise-routes`, and, when it can see the admin web server's account, runs `tailscale set --operator` for that account.
+- **start** also publishes the web UI into `/usr/syno/synoman/webman/3rdparty/Tailscale`, runs `tailscale set --accept-dns=false`, enables IPv4 forwarding, applies the saved LAN and exit-node choices with `tailscale set --advertise-routes` and `tailscale set --advertise-exit-node`, and, when it can see the admin web server's account, runs `tailscale set --operator` for that account.
 - **stop** stops the daemon and removes the UI files.
 - **status** exits 0 when `tailscaled` is running and 3 when it is stopped.
 

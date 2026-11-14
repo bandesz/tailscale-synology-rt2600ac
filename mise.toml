@@ -6,11 +6,11 @@ shellcheck = "0.11.0"
 
 [tasks.lint]
 description = "Lint the package scripts"
-run = "shellcheck build-srm-spk.sh scripts/release.sh test/syno-version.sh test/disable-dns.sh test/advertise-routes.sh test/state-backup.sh test/publish-ui.sh test/tar-owner.sh srm/start-stop-status srm/preinst srm/postinst srm/preuninst srm/postuninst srm/preupgrade srm/postupgrade"
+run = "shellcheck build-srm-spk.sh scripts/release.sh test/syno-version.sh test/disable-dns.sh test/advertise-routes.sh test/routing-offers.sh test/state-backup.sh test/publish-ui.sh test/tar-owner.sh srm/start-stop-status srm/preinst srm/postinst srm/preuninst srm/postuninst srm/preupgrade srm/postupgrade srm/WIZARD_UIFILES/upgrade_uifile.sh"
 
 [tasks.test]
 description = "Check version numbering and that service start turns Tailscale DNS off"
-run = "sh test/syno-version.sh && sh test/disable-dns.sh && sh test/advertise-routes.sh && sh test/state-backup.sh && sh test/publish-ui.sh && sh test/tar-owner.sh"
+run = "sh test/syno-version.sh && sh test/disable-dns.sh && sh test/advertise-routes.sh && sh test/routing-offers.sh && sh test/state-backup.sh && sh test/publish-ui.sh && sh test/tar-owner.sh"
 
 [tasks.build]
 description = "Download the Tailscale armv7 DSM 7 SPK and build the RT2600ac package. Optional argument: version, for example 1.104.7"

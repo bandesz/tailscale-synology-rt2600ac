@@ -1,0 +1,16 @@
+[{
+    "step_title": "Tailscale routing",
+    "items": [{
+        "type": "multiselect",
+        "desc": "Choose what this router offers to your tailnet. A tailnet admin still has to approve the choice in the Tailscale admin console before another device can use it.",
+        "subitems": [{
+            "key": "wizard_advertise_routes",
+            "desc": "Advertise LAN subnets",
+            "defaultValue": true
+        }, {
+            "key": "wizard_advertise_exit_node",
+            "desc": "Advertise as an exit node",
+            "defaultValue": true
+        }]
+    }]
+}]

@@ -77,6 +77,15 @@ sha256_file() {
     fi
 }
 
+# Package Center reads WIZARD_UIFILES from the SPK root, not from package.tgz.
+stage_wizard() {
+    dest=$1
+    mkdir -p "${dest}/WIZARD_UIFILES"
+    cp srm/WIZARD_UIFILES/install_uifile srm/WIZARD_UIFILES/upgrade_uifile.sh \
+        "${dest}/WIZARD_UIFILES/"
+    chmod 755 "${dest}/WIZARD_UIFILES/upgrade_uifile.sh"
+}
+
 # Members must be uid 0 and uname root. macOS bsdtar records that with
 # --uid and --uname. GNU tar rejects --uid; --owner=root sets both the
 # numeric id and the name.
@@ -226,6 +235,7 @@ cp srm/resource "$stage/conf/resource"
 cp srm/start-stop-status srm/preinst srm/postinst srm/preuninst srm/postuninst \
     srm/preupgrade srm/postupgrade "$stage/scripts/"
 chmod 755 "$stage/scripts/"*
+stage_wizard "$stage"
 
 # dsmuidir is where Package Center reads the menu config. The start script
 # copies those files into /usr/syno/synoman/webman/3rdparty/, which is what
@@ -254,7 +264,8 @@ pack_ustar -cf "$out" -C "$stage" \
     PACKAGE_ICON_256.PNG \
     package.tgz \
     conf \
-    scripts
+    scripts \
+    WIZARD_UIFILES
 
 printf '%s\n' "$out" >dist/latest-spk-path
 echo "built ${out}"
