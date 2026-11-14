@@ -30,6 +30,9 @@ export TAILSCALE_LOG="$tmp/args"
 publish_ui() { :; }
 start_daemon() { :; }
 expose_socket() { :; }
+enable_ip_forward() { :; }
+advertise_routes() { :; }
+ensure_routes() { :; }
 
 cgi_user() { printf 'http\n'; }
 : > "$TAILSCALE_LOG"

@@ -49,6 +49,14 @@ The setting is stored with the node and applied again on every start, including 
 
 The package links the CLI at `/usr/local/bin/tailscale` when the service is running.
 
+### Subnet routes
+
+On each start the package turns on IPv4 forwarding and advertises the router's LAN subnets: private IPv4 networks that are directly connected, excluding the WAN interface (the one with the default route) and `tailscale0`. The page in the SRM menu is Tailscale's login UI and does not edit subnet routes, so the service sets them. If the node is not logged in yet, it waits and advertises once login finishes.
+
+Approve the routes in the [Tailscale admin console](https://login.tailscale.com/admin/machines) before other devices can use them. Tailscale on Synology forwards approved subnet traffic in userspace (TCP and UDP). This package does not add iptables rules.
+
+To advertise a different list, write the prefixes to `/var/packages/Tailscale/var/advertise-routes`, separated by commas or whitespace. An empty file advertises no routes. Delete the file to go back to detecting the LANs. Exit-node advertisement is left as it is.
+
 ### Direct connections
 
 The daemon listens on UDP port 41641. Without a firewall pass for that port, Tailscale still works and relays connections through DERP. Allowing UDP 41641 on the router is what makes direct WireGuard connections possible. This package does not add that firewall rule.
@@ -83,7 +91,7 @@ What the build does:
 | Task | Purpose |
 | --- | --- |
 | `mise run lint` | shellcheck on the scripts |
-| `mise run test` | Synology version numbers used in download URLs |
+| `mise run test` | Synology version numbers, DNS off on start, and LAN route advertisement |
 | `mise run build` | Download Tailscale and build the SPK |
 | `mise run ci` | lint, test, and build |
 | `mise run release` | Build and attach the SPK to a GitHub release |
@@ -114,7 +122,7 @@ If that release already exists, the SPK is uploaded again and replaces the previ
 Package Center calls `srm/start-stop-status`.
 
 - **start** loads the `tun` kernel module, creates `/dev/net/tun`, and starts `tailscaled` with its state and socket under `/var/packages/Tailscale/var`. The socket path matches what the `tailscale` binary looks for on anything other than DSM 6. SRM's version file is major version 1, so it is not treated as DSM 6.
-- **start** also publishes the web UI into `/usr/syno/synoman/webman/3rdparty/Tailscale`, runs `tailscale set --accept-dns=false`, and, when it can see the admin web server's account, runs `tailscale set --operator` for that account.
+- **start** also publishes the web UI into `/usr/syno/synoman/webman/3rdparty/Tailscale`, runs `tailscale set --accept-dns=false`, enables IPv4 forwarding, advertises the LAN subnets with `tailscale set --advertise-routes`, and, when it can see the admin web server's account, runs `tailscale set --operator` for that account.
 - **stop** stops the daemon and removes the UI files.
 - **status** exits 0 when `tailscaled` is running and 3 when it is stopped.
 

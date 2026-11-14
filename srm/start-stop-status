@@ -165,6 +165,202 @@ disable_dns() {
     fi
 }
 
+# IPv4 forwarding has to be on before Tailscale will offer subnet routes.
+# Writing the sysctl is enough on SRM; there is no sysctl.conf to persist,
+# so this runs on every start. $1 overrides the path in tests.
+enable_ip_forward() {
+    forward_path=${1:-/proc/sys/net/ipv4/ip_forward}
+    if [ ! -f "${forward_path}" ]; then
+        return 0
+    fi
+    if ! printf '1\n' >"${forward_path}" 2>/dev/null; then
+        note "Could not enable IPv4 forwarding."
+    fi
+}
+
+# Print a comma-separated list of private IPv4 prefixes connected on this
+# router, excluding the WAN (the interface with the default route) and
+# interfaces that are not LANs. $1 is a /proc/net/route file. Addresses in
+# that file are little-endian hex.
+lan_routes_from_proc() {
+    route_table=$1
+    if [ ! -r "${route_table}" ]; then
+        return 0
+    fi
+    awk '
+        function hexval(s,    i, c, v) {
+            v = 0
+            s = tolower(s)
+            for (i = 1; i <= length(s); i++) {
+                c = substr(s, i, 1)
+                v = v * 16 + index("0123456789abcdef", c) - 1
+            }
+            return v
+        }
+        # Byte values only. A mask such as 255.255.255.0 is larger than a
+        # signed 32-bit integer, and BusyBox awk on this router truncates
+        # those, which made every LAN prefix look invalid.
+        function octet(h, pair) {
+            if (pair == 1) return hexval(substr(h, 7, 2))
+            if (pair == 2) return hexval(substr(h, 5, 2))
+            if (pair == 3) return hexval(substr(h, 3, 2))
+            return hexval(substr(h, 1, 2))
+        }
+        function dotted(h) {
+            return octet(h, 1) "." octet(h, 2) "." octet(h, 3) "." octet(h, 4)
+        }
+        function prefixlen(h,    pair, n, b, bit, seen, bits) {
+            seen = 0
+            bits = 0
+            for (pair = 4; pair >= 1; pair--) {
+                n = octet(h, pair)
+                for (b = 0; b < 8; b++) {
+                    bit = int(n) % 2
+                    n = int(n / 2)
+                    if (bit == 1) {
+                        seen = 1
+                        bits++
+                    } else if (seen) {
+                        return -1
+                    }
+                }
+            }
+            if (bits <= 0 || bits >= 32) return -1
+            return bits
+        }
+        function is_private(h,    o1, o2) {
+            o1 = octet(h, 1)
+            o2 = octet(h, 2)
+            if (o1 == 10 || (o1 == 192 && o2 == 168)) return 1
+            if (o1 == 172 && o2 >= 16 && o2 <= 31) return 1
+            if (o1 == 100 && o2 >= 64 && o2 <= 127) return 1
+            return 0
+        }
+        function has_prefix(s, p) {
+            return substr(s, 1, length(p)) == p
+        }
+        function skip_iface(name) {
+            if (name == "lo") return 1
+            if (has_prefix(name, "tailscale")) return 1
+            if (has_prefix(name, "docker")) return 1
+            if (has_prefix(name, "veth")) return 1
+            if (has_prefix(name, "sit")) return 1
+            if (has_prefix(name, "ip6tnl")) return 1
+            if (has_prefix(name, "ifb")) return 1
+            if (has_prefix(name, "dummy")) return 1
+            if (has_prefix(name, "teql")) return 1
+            if (has_prefix(name, "gre")) return 1
+            if (has_prefix(name, "erspan")) return 1
+            return 0
+        }
+        function ishex8(s,    i, c) {
+            if (length(s) != 8) return 0
+            s = tolower(s)
+            for (i = 1; i <= 8; i++) {
+                c = substr(s, i, 1)
+                if (index("0123456789abcdef", c) == 0) return 0
+            }
+            return 1
+        }
+        NF < 8 || !ishex8($2) || !ishex8($3) || !ishex8($8) { next }
+        {
+            n++
+            iface[n] = $1
+            dest[n] = $2
+            gw[n] = $3
+            flags[n] = $4
+            mask[n] = $8
+            if ($2 == "00000000" && $3 != "00000000") wan[$1] = 1
+        }
+        END {
+            for (i = 1; i <= n; i++) {
+                if (wan[iface[i]] || skip_iface(iface[i])) continue
+                if (gw[i] != "00000000" || dest[i] == "00000000") continue
+                if (int(hexval(flags[i])) % 2 == 0) continue
+                plen = prefixlen(mask[i])
+                if (plen < 0 || !is_private(dest[i])) continue
+                cidr = dotted(dest[i]) "/" plen
+                if (seen[cidr]++) continue
+                routes[++nr] = cidr
+            }
+            for (i = 1; i <= nr; i++) {
+                for (j = i + 1; j <= nr; j++) {
+                    if (routes[j] < routes[i]) {
+                        tmp = routes[i]
+                        routes[i] = routes[j]
+                        routes[j] = tmp
+                    }
+                }
+            }
+            out = ""
+            for (i = 1; i <= nr; i++) out = out (out ? "," : "") routes[i]
+            if (out != "") print out
+        }
+    ' "${route_table}"
+}
+
+# $1 is a file of prefixes separated by commas or whitespace.
+read_route_list() {
+    tr '[:space:],' ',' <"$1" | tr -s ',' | sed 's/^,//; s/,$//'
+}
+
+# Offer this router's LANs to the tailnet. An admin still has to approve
+# them. Tailscale on Synology forwards the approved routes in userspace, so
+# this does not install iptables rules.
+#
+# /var/packages/Tailscale/var/advertise-routes, when present, is the list to
+# offer (empty means offer none). Without that file, connected private IPv4
+# routes are used. Finding none leaves whatever is already advertised.
+advertise_routes() {
+    route_file="${STATE_DIR}/advertise-routes"
+    if [ -f "${route_file}" ]; then
+        adv_routes=$(read_route_list "${route_file}")
+    else
+        adv_routes=$(lan_routes_from_proc "${ROUTE_TABLE:-/proc/net/route}" 2>>"${LOG}") || adv_routes=""
+        if [ -z "${adv_routes}" ]; then
+            printf '%s\n' "$(date) no LAN routes detected" >>"${LOG}"
+            return 0
+        fi
+    fi
+    printf '%s\n' "$(date) advertising routes: ${adv_routes}" >>"${LOG}"
+    if ! "${PKGDEST}/bin/tailscale" --socket="${SOCKET_FILE}" set --advertise-routes="${adv_routes}" >>"${LOG}" 2>&1; then
+        note "Could not advertise routes. See ${LOG}."
+    fi
+}
+
+node_is_up() {
+    "${PKGDEST}/bin/tailscale" --socket="${SOCKET_FILE}" status >/dev/null 2>&1
+}
+
+# Route advertisement at the moment of start is too early: an upgrade drops
+# the node key, and the menu login that follows replaces prefs. Wait until
+# the node is actually up, then offer the LANs.
+ensure_routes() {
+    if node_is_up; then
+        advertise_routes
+        return 0
+    fi
+    printf '%s\n' "$(date) waiting to advertise routes until Tailscale is logged in" >>"${LOG}"
+    if command -v setsid >/dev/null 2>&1; then
+        setsid "$0" advertise-routes >>"${LOG}" 2>&1 </dev/null &
+    else
+        "$0" advertise-routes >>"${LOG}" 2>&1 </dev/null &
+    fi
+}
+
+wait_and_advertise() {
+    attempt=0
+    while [ "${attempt}" -lt "${ADVERTISE_ATTEMPTS:-150}" ]; do
+        if node_is_up; then
+            advertise_routes
+            return 0
+        fi
+        attempt=$((attempt + 1))
+        sleep "${ADVERTISE_INTERVAL:-2}"
+    done
+    printf '%s\n' "$(date) gave up advertising routes; Tailscale did not log in" >>"${LOG}"
+}
+
 publish_ui() {
     mkdir -p /usr/syno/synoman/webman/3rdparty
     if [ -L "${UI_LINK}" ]; then
@@ -213,15 +409,21 @@ main() {
     case "${1:-}" in
     start)
         publish_ui
+        enable_ip_forward
         if [ -n "$(pids)" ]; then
             expose_socket
             grant_operator
             disable_dns
+            ensure_routes
             return 0
         fi
         start_daemon
         grant_operator
         disable_dns
+        ensure_routes
+        ;;
+    advertise-routes)
+        wait_and_advertise
         ;;
     stop)
         stop_daemon
