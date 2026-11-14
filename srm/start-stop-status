@@ -13,7 +13,8 @@ STATE_FILE="${STATE_DIR}/tailscaled.state"
 SOCKET_FILE="${STATE_DIR}/tailscaled.sock"
 # Apache on SRM serves this tree. Static files follow a symlink, but CGI is
 # executed only from a real file here. DSM's nginx does the symlink itself.
-UI_LINK="/usr/syno/synoman/webman/3rdparty/${SYNOPKG_PKGNAME}"
+UI_ROOT="${UI_ROOT:-/usr/syno/synoman/webman/3rdparty}"
+UI_LINK="${UI_ROOT}/${SYNOPKG_PKGNAME}"
 
 note() {
     printf '%s\n' "$1" >>"${SYNOPKG_TEMP_LOGFILE:-/dev/null}"
@@ -414,13 +415,19 @@ wait_and_advertise() {
 }
 
 publish_ui() {
-    mkdir -p /usr/syno/synoman/webman/3rdparty
+    mkdir -p "${UI_ROOT}"
     if [ -L "${UI_LINK}" ]; then
         rm -f "${UI_LINK}"
     fi
     mkdir -p "${UI_LINK}"
-    cp -f "${PKGDEST}/ui/config" "${PKGDEST}/ui/PACKAGE_ICON_256.PNG" \
-        "${PKGDEST}/ui/index.cgi" "${UI_LINK}/"
+    cp -f "${PKGDEST}/ui/config" "${PKGDEST}/ui/index.cgi" "${UI_LINK}/"
+    # synohdpack resolves the icon and only serves one whose real path is
+    # inside the package directory. DownloadStation is a symlink to target/ui
+    # for that reason. A copied PNG under webman/3rdparty is rejected and the
+    # menu shows the 1x1 error image. index.cgi stays a real file because
+    # Apache on SRM does not execute CGI through a symlink.
+    rm -f "${UI_LINK}/PACKAGE_ICON_256.PNG"
+    ln -s "${PKGDEST}/ui/PACKAGE_ICON_256.PNG" "${UI_LINK}/PACKAGE_ICON_256.PNG"
     chown 0:0 "${UI_LINK}/index.cgi"
     chmod 4755 "${UI_LINK}/index.cgi"
 }
