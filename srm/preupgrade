@@ -1,2 +1,7 @@
 #!/bin/sh
-exit 0
+# SRM removes /var/packages/Tailscale/var during an upgrade, which drops the
+# node key and forces a new login. Copy it out before that happens.
+set -eu
+# shellcheck disable=SC1091
+. "$(dirname "$0")/start-stop-status"
+backup_state

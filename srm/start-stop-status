@@ -328,6 +328,56 @@ advertise_routes() {
     fi
 }
 
+# SRM replaces /var/packages/Tailscale/var on upgrade. /usr/syno/etc/packages
+# is left in place, so the node key is kept there as well as in the upgrade
+# scratch directory Package Center passes to preupgrade and postupgrade.
+package_etc_dir() {
+    if [ -n "${STATE_BACKUP_DIR:-}" ]; then
+        printf '%s\n' "${STATE_BACKUP_DIR}"
+        return 0
+    fi
+    printf '%s\n' "/usr/syno/etc/packages/${SYNOPKG_PKGNAME}"
+}
+
+backup_state() {
+    if [ ! -s "${STATE_FILE}" ]; then
+        return 0
+    fi
+    if [ -n "${SYNOPKG_TEMP_UPGRADE_FOLDER:-}" ]; then
+        cp -f "${STATE_FILE}" "${SYNOPKG_TEMP_UPGRADE_FOLDER}/tailscaled.state" || true
+    fi
+    etc_dir=$(package_etc_dir)
+    mkdir -p "${etc_dir}" 2>/dev/null || true
+    if [ -d "${etc_dir}" ]; then
+        cp -f "${STATE_FILE}" "${etc_dir}/tailscaled.state" || true
+        chmod 600 "${etc_dir}/tailscaled.state" 2>/dev/null || true
+    fi
+}
+
+restore_state() {
+    if [ -s "${STATE_FILE}" ]; then
+        return 0
+    fi
+    src=""
+    if [ -n "${SYNOPKG_TEMP_UPGRADE_FOLDER:-}" ] && [ -s "${SYNOPKG_TEMP_UPGRADE_FOLDER}/tailscaled.state" ]; then
+        src="${SYNOPKG_TEMP_UPGRADE_FOLDER}/tailscaled.state"
+    else
+        etc_dir=$(package_etc_dir)
+        if [ -s "${etc_dir}/tailscaled.state" ]; then
+            src="${etc_dir}/tailscaled.state"
+        fi
+    fi
+    if [ -z "${src}" ]; then
+        return 0
+    fi
+    mkdir -p "${STATE_DIR}"
+    if ! cp -f "${src}" "${STATE_FILE}"; then
+        note "Could not restore Tailscale state."
+        return 0
+    fi
+    chmod 600 "${STATE_FILE}" 2>/dev/null || true
+}
+
 node_is_up() {
     "${PKGDEST}/bin/tailscale" --socket="${SOCKET_FILE}" status >/dev/null 2>&1
 }
@@ -338,6 +388,7 @@ node_is_up() {
 ensure_routes() {
     if node_is_up; then
         advertise_routes
+        backup_state
         return 0
     fi
     printf '%s\n' "$(date) waiting to advertise routes until Tailscale is logged in" >>"${LOG}"
@@ -353,6 +404,7 @@ wait_and_advertise() {
     while [ "${attempt}" -lt "${ADVERTISE_ATTEMPTS:-150}" ]; do
         if node_is_up; then
             advertise_routes
+            backup_state
             return 0
         fi
         attempt=$((attempt + 1))
@@ -408,6 +460,7 @@ stop_daemon() {
 main() {
     case "${1:-}" in
     start)
+        restore_state
         publish_ui
         enable_ip_forward
         if [ -n "$(pids)" ]; then
@@ -426,6 +479,7 @@ main() {
         wait_and_advertise
         ;;
     stop)
+        backup_state
         stop_daemon
         unpublish_ui
         ;;

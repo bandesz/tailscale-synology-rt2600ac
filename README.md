@@ -128,7 +128,7 @@ Package Center calls `srm/start-stop-status`.
 
 The package runs as root. `tailscaled` has to insert `tun.ko` and create the tunnel device. A package user cannot do that.
 
-Upgrades replace `target/` and leave `var/` in place, so the node identity survives. There is no boot script outside Package Center.
+Upgrades replace `target/`. On SRM that also removes `var/`, which is where Tailscale keeps its node key, so before the files are removed the key is copied to `/usr/syno/etc/packages/Tailscale` and restored afterwards. There is no boot script outside Package Center.
 
 ## Limitations
 

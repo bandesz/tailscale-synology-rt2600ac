@@ -33,6 +33,8 @@ expose_socket() { :; }
 enable_ip_forward() { :; }
 advertise_routes() { :; }
 ensure_routes() { :; }
+restore_state() { :; }
+backup_state() { :; }
 
 cgi_user() { printf 'http\n'; }
 : > "$TAILSCALE_LOG"
