@@ -17,8 +17,6 @@
 #             Print the Synology build number for VERSION and exit.
 set -eu
 
-cd "$(dirname "$0")"
-
 # Split MAJOR.MINOR.PATCH into the globals major, minor, and patch.
 parse_version() {
     ver=${1#v}
@@ -76,6 +74,19 @@ sha256_file() {
         sha256sum "$1" | awk '{print $1}'
     else
         shasum -a 256 "$1" | awk '{print $1}'
+    fi
+}
+
+# Members must be uid 0 and uname root. macOS bsdtar records that with
+# --uid and --uname. GNU tar rejects --uid; --owner=root sets both the
+# numeric id and the name.
+pack_ustar() {
+    if tar --version 2>/dev/null | grep -q 'GNU tar'; then
+        COPYFILE_DISABLE=1 tar --format ustar --owner=root --group=root "$@"
+    else
+        COPYFILE_DISABLE=1 tar --format ustar \
+            --uid 0 --gid 0 --uname root --gname root \
+            "$@"
     fi
 }
 
@@ -143,6 +154,10 @@ download_spk() {
     return 1
 }
 
+# Tests source this file for pack_ustar. Building runs only as a script.
+if [ "${0##*/}" = "build-srm-spk.sh" ]; then
+cd "$(dirname "$0")"
+
 version=${1:-${TAILSCALE_VERSION:-}}
 if [ -z "$version" ]; then
     version=$(latest_version)
@@ -196,9 +211,7 @@ rm -f "$stage/payload/ui/index.cgi"
 )
 chmod 755 "$stage/payload/ui" "$stage/payload/ui/index.cgi"
 rm -f "$stage/package.tgz"
-COPYFILE_DISABLE=1 tar --format ustar \
-    --uid 0 --gid 0 --uname root --gname root \
-    -czf "$stage/package.tgz" -C "$stage/payload" \
+pack_ustar -czf "$stage/package.tgz" -C "$stage/payload" \
     bin conf ui
 rm -rf "$stage/payload"
 
@@ -235,9 +248,7 @@ EOF
 mkdir -p dist
 out="dist/tailscale-ipq806x-${upstream_version}-srm1.3.spk"
 rm -f "$out"
-COPYFILE_DISABLE=1 tar --format ustar \
-    --uid 0 --gid 0 --uname root --gname root \
-    -cf "$out" -C "$stage" \
+pack_ustar -cf "$out" -C "$stage" \
     INFO \
     PACKAGE_ICON.PNG \
     PACKAGE_ICON_256.PNG \
@@ -247,3 +258,4 @@ COPYFILE_DISABLE=1 tar --format ustar \
 
 printf '%s\n' "$out" >dist/latest-spk-path
 echo "built ${out}"
+fi
