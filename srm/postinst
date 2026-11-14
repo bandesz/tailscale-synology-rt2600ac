@@ -1,0 +1,6 @@
+#!/bin/sh
+# Package Center creates the user from conf/privilege and then starts
+# the service. State lives beside the package, not in target/, because
+# an upgrade replaces target/.
+mkdir -p "${SYNOPKG_PKGVAR:-/var/packages/${SYNOPKG_PKGNAME}/var}"
+exit 0

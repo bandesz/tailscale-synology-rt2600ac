@@ -1,0 +1,26 @@
+name: Release
+
+on:
+  push:
+    tags:
+      - "v[0-9]*"
+  workflow_dispatch:
+    inputs:
+      version:
+        description: Tailscale version to package, such as 1.104.7. Leave empty to use the latest stable release.
+        required: false
+        type: string
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: jdx/mise-action@v2
+      - name: Build and publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAILSCALE_VERSION: ${{ github.event.inputs.version }}
+        run: mise run release

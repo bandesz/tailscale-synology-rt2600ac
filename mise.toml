@@ -1,0 +1,26 @@
+min_version = "2025.1.0"
+
+[tools]
+go = "1.26.6"
+shellcheck = "0.11.0"
+
+[tasks.lint]
+description = "Lint the package scripts"
+run = "shellcheck build-srm-spk.sh scripts/release.sh test/syno-version.sh srm/start-stop-status srm/preinst srm/postinst srm/preuninst srm/postuninst srm/preupgrade srm/postupgrade"
+
+[tasks.test]
+description = "Check the Synology version numbers used in download URLs"
+run = "sh test/syno-version.sh"
+
+[tasks.build]
+description = "Download the Tailscale armv7 DSM 7 SPK and build the RT2600ac package. Optional argument: version, for example 1.104.7"
+run = "sh build-srm-spk.sh"
+
+[tasks.ci]
+description = "Lint, test, and build"
+depends = ["lint", "test", "build"]
+
+[tasks.release]
+description = "Build the package and attach it to a GitHub release. Optional argument: Tailscale version"
+depends = ["lint", "test"]
+run = "sh scripts/release.sh"
