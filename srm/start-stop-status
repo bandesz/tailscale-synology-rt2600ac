@@ -151,7 +151,6 @@ grant_operator() {
         return 0
         ;;
     esac
-    note "Allowing ${user} to operate tailscaled."
     if ! "${PKGDEST}/bin/tailscale" --socket="${SOCKET_FILE}" set --operator="${user}" >>"${LOG}" 2>&1; then
         note "Could not grant ${user}. See ${LOG}."
     fi
@@ -161,7 +160,6 @@ grant_operator() {
 # On a router, that replaces the router's own resolver. The preference
 # survives login and is applied again on every start.
 disable_dns() {
-    note "Turning Tailscale DNS off."
     if ! "${PKGDEST}/bin/tailscale" --socket="${SOCKET_FILE}" set --accept-dns=false >>"${LOG}" 2>&1; then
         note "Could not turn Tailscale DNS off. See ${LOG}."
     fi

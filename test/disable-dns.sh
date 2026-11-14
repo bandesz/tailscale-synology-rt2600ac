@@ -29,8 +29,23 @@ export TAILSCALE_LOG="$tmp/args"
 
 publish_ui() { :; }
 start_daemon() { :; }
-grant_operator() { :; }
 expose_socket() { :; }
+
+cgi_user() { printf 'http\n'; }
+: > "$TAILSCALE_LOG"
+: > "$SYNOPKG_TEMP_LOGFILE"
+grant_operator
+if ! grep -F -x -e "--socket=${SYNOPKG_PKGVAR}/tailscaled.sock set --operator=http" "$TAILSCALE_LOG" >/dev/null; then
+    echo "expected operator grant for http" >&2
+    cat "$TAILSCALE_LOG" >&2
+    exit 1
+fi
+if [ -s "$SYNOPKG_TEMP_LOGFILE" ]; then
+    echo "granting the operator wrote a Package Center message:" >&2
+    cat "$SYNOPKG_TEMP_LOGFILE" >&2
+    exit 1
+fi
+grant_operator() { :; }
 
 expect_dns_off() {
     want="--socket=${SYNOPKG_PKGVAR}/tailscaled.sock set --accept-dns=false"
@@ -44,8 +59,14 @@ expect_dns_off() {
 
 pids() { printf '99\n'; }
 : > "$TAILSCALE_LOG"
+: > "$SYNOPKG_TEMP_LOGFILE"
 main start
 expect_dns_off
+if [ -s "$SYNOPKG_TEMP_LOGFILE" ]; then
+    echo "a normal start wrote a Package Center message:" >&2
+    cat "$SYNOPKG_TEMP_LOGFILE" >&2
+    exit 1
+fi
 
 pids() { return 0; }
 : > "$TAILSCALE_LOG"
