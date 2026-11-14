@@ -266,4 +266,47 @@ if ! awk '
     exit 1
 fi
 
+# SRM's BusyBox tr does not implement POSIX classes. tr -d '[:space:]'
+# deletes the characters of that string, so "false" becomes "fl" and was
+# read back as on. Stop and start then advertises both offers again.
+mkdir -p "$tmp/busybox-bin"
+cat > "$tmp/busybox-bin/tr" << 'EOF'
+#!/bin/sh
+if [ "$1" != "-d" ]; then
+    echo "unexpected tr usage: $*" >&2
+    exit 1
+fi
+awk -v drop="$2" '
+{
+    out = ""
+    n = length(drop)
+    for (i = 1; i <= length($0); i++) {
+        c = substr($0, i, 1)
+        skip = 0
+        for (j = 1; j <= n; j++) {
+            if (substr(drop, j, 1) == c) skip = 1
+        }
+        if (!skip) out = out c
+    }
+    printf "%s", out
+}
+'
+EOF
+chmod +x "$tmp/busybox-bin/tr"
+printf '%s\n' false > "${SYNOPKG_PKGVAR}/advertise-lan"
+printf '%s\n' false > "${SYNOPKG_PKGVAR}/advertise-exit-node"
+got=$(PATH="$tmp/busybox-bin:$PATH" offer_choice "${SYNOPKG_PKGVAR}/advertise-exit-node")
+if [ "$got" != "false" ]; then
+    echo "BusyBox tr made a false exit-node file look on: ${got}" >&2
+    exit 1
+fi
+got=$(PATH="$tmp/busybox-bin:$PATH" offer_choice "${SYNOPKG_PKGVAR}/advertise-lan")
+if [ "$got" != "false" ]; then
+    echo "BusyBox tr made a false LAN file look on: ${got}" >&2
+    exit 1
+fi
+export SYNOPKG_TEMP_LOGFILE="$tmp/upgrade-busybox.json"
+PATH="$tmp/busybox-bin:$PATH" sh ./srm/WIZARD_UIFILES/upgrade_uifile.sh
+expect_wizard "$SYNOPKG_TEMP_LOGFILE" "wizard_advertise_routes=false,wizard_advertise_exit_node=false"
+
 echo "routing offers follow the install choices"

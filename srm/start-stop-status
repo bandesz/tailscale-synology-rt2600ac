@@ -338,13 +338,22 @@ advertise_routes() {
 
 # "false" turns an offer off. A missing file stays on: the install page was
 # skipped, or this is an upgrade from a package that did not ask.
+#
+# Read the word directly. BusyBox tr on SRM treats '[:space:]' as the
+# characters in that string, which deletes letters from "false" and made
+# a cleared offer look on again at the next start.
 offer_choice() {
     choice_file=$1
     if [ ! -f "${choice_file}" ]; then
         printf 'true\n'
         return 0
     fi
-    value=$(tr -d '[:space:]' < "${choice_file}")
+    value=""
+    IFS= read -r value < "${choice_file}" || true
+    cr=$(printf '\r')
+    case "${value}" in
+    *"${cr}") value=${value%"${cr}"} ;;
+    esac
     case "${value}" in
     false) printf 'false\n' ;;
     *) printf 'true\n' ;;

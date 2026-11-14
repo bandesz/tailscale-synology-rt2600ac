@@ -14,7 +14,13 @@ offer_default() {
     for dir in "${pkg_var}" "${etc_dir}"; do
         file="${dir}/${name}"
         if [ -f "${file}" ]; then
-            value=$(tr -d '[:space:]' < "${file}")
+            # Same reader as offer_choice. BusyBox tr would corrupt "false".
+            value=""
+            IFS= read -r value < "${file}" || true
+            cr=$(printf '\r')
+            case "${value}" in
+            *"${cr}") value=${value%"${cr}"} ;;
+            esac
             case "${value}" in
             false) printf 'false\n' ;;
             *) printf 'true\n' ;;
