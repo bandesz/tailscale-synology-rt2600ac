@@ -13,7 +13,7 @@ description = "Check version numbering and that service start turns Tailscale DN
 run = "sh test/syno-version.sh && sh test/disable-dns.sh && sh test/advertise-routes.sh && sh test/routing-offers.sh && sh test/state-backup.sh && sh test/publish-ui.sh && sh test/tar-owner.sh"
 
 [tasks.build]
-description = "Download the Tailscale armv7 DSM 7 SPK and build the RT2600ac package. Optional argument: version, for example 1.104.7"
+description = "Download the Tailscale armv7 DSM 7 SPK and build the selected SRM package. Optional argument: version, for example 1.104.7"
 run = "sh build-srm-spk.sh"
 
 [tasks.ci]

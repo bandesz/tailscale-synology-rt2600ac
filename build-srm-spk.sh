@@ -1,14 +1,15 @@
 #!/bin/sh
-# Build the RT2600ac (ipq806x) SRM 1.3 package from Tailscale's armv7 DSM 7 SPK.
+# Build an RT2600ac or WRX560 SRM 1.3 package from Tailscale's armv7 DSM 7 SPK.
 #
 # The DSM packages declare arch "armv7" and a DSM 6/7 minimum version, so
 # SRM never accepts them. This writes a package Package Center can install
-# on SRM 1.3: platform arch ipq806x, os_min_ver 1.3-9193, and the standard
+# on SRM 1.3: platform-specific arch, os_min_ver 1.3-9193, and the standard
 # install/upgrade/start scripts. No signature is added. Synology does not
 # publish a signing key, and the SRM packages that install on this router
 # are unsigned.
 #
-# Usage: build-srm-spk.sh [version]
+# Usage: [SRM_ARCH=ipq806x|hawkeye] build-srm-spk.sh [version]
+#   SRM_ARCH  Target platform: ipq806x (RT2600ac, default) or hawkeye (WRX560).
 #   version   Tailscale release, such as 1.104.7. Omit it to use the latest
 #             stable GitHub release. The armv7 DSM 7 SPK is downloaded from
 #             https://pkgs.tailscale.com/stable/ and checked against the
@@ -167,6 +168,16 @@ download_spk() {
 if [ "${0##*/}" = "build-srm-spk.sh" ]; then
 cd "$(dirname "$0")"
 
+srm_arch=${SRM_ARCH:-ipq806x}
+case "$srm_arch" in
+    ipq806x) router_model=RT2600ac ;;
+    hawkeye) router_model=WRX560 ;;
+    *)
+        echo "unsupported SRM_ARCH: ${srm_arch}; use ipq806x or hawkeye" >&2
+        exit 1
+        ;;
+esac
+
 version=${1:-${TAILSCALE_VERSION:-}}
 if [ -z "$version" ]; then
     version=$(latest_version)
@@ -186,7 +197,7 @@ tar -xf "$src" -C "$stage" package.tgz PACKAGE_ICON.PNG PACKAGE_ICON_256.PNG
 tar -xzf "$stage/package.tgz" -C "$stage/payload"
 elf_class=$(od -An -t u1 -j 4 -N 1 "$stage/payload/bin/tailscaled" | tr -d ' ')
 if [ "$elf_class" != "1" ]; then
-    echo "RT2600ac needs the 32-bit arm package (ELF class ${elf_class})" >&2
+    echo "${router_model} needs the 32-bit arm package (ELF class ${elf_class})" >&2
     exit 1
 fi
 
@@ -243,11 +254,11 @@ stage_wizard "$stage"
 cat >"$stage/INFO" <<EOF
 package="Tailscale"
 version="${upstream_version}"
-description="Unofficial Tailscale package for the Synology RT2600ac (SRM 1.3)."
+description="Unofficial Tailscale package for the Synology ${router_model} (SRM 1.3)."
 displayname="Tailscale"
 maintainer="synology-tailscale"
 maintainer_url="https://github.com/tailscale/tailscale"
-arch="ipq806x"
+arch="${srm_arch}"
 os_min_ver="1.3-9193"
 dsmuidir="ui"
 dsmappname="SYNO.SDS.Tailscale"
@@ -256,7 +267,7 @@ reloadui="yes"
 EOF
 
 mkdir -p dist
-out="dist/tailscale-ipq806x-${upstream_version}-srm1.3.spk"
+out="dist/tailscale-${srm_arch}-${upstream_version}-srm1.3.spk"
 rm -f "$out"
 pack_ustar -cf "$out" -C "$stage" \
     INFO \
