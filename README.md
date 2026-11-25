@@ -20,7 +20,9 @@ Supported build targets are RT2600ac (`ipq806x`, the default) and WRX560 (`hawke
 
 ## Install
 
-For the RT2600ac, download `tailscale-ipq806x-<version>-srm1.3.spk` from the Releases page of this repository, or build it yourself. For the WRX560, download `tailscale-hawkeye-<version>-srm1.3.spk` from the Releases page, or build it with the instructions below.
+For the RT2600ac, download `tailscale-ipq806x-<version>-<syno>-srm1.3.spk` from the Releases page of this repository, or build it yourself. For the WRX560, download `tailscale-hawkeye-<version>-<syno>-srm1.3.spk` from the Releases page, or build it with the instructions below.
+
+`<syno>` is the Synology build number in Tailscale's package (700104007 for 1.104.7), and a built file follows the upstream INFO version when that string differs from the `--print-target` preview.
 
 The WRX560 needs a storage volume before the package can start. On the tested router, Package Center failed with "There is no volume" until a USB drive was attached. Operation without USB storage is not established.
 
@@ -204,7 +206,7 @@ These pieces are shared:
 These pieces are model-specific:
 
 - The INFO arch and the model name.
-- The package path `dist/tailscale-<arch>-<version>-srm1.3.spk`.
+- The package path `dist/tailscale-<arch>-<version>-<syno>-srm1.3.spk`.
 - Device notes such as the storage volume, the Open button, and the clock,
   in the README install and limitations text and in the release notes.
   Those notes are prose in `scripts/release.sh`, next to the per-model

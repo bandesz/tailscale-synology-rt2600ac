@@ -46,6 +46,8 @@ fi
 
 # --print-target reports the model, SPK path, and INFO, then exits
 # before any download. Expected rows come from srm/targets.
+# The Synology build number is the same value --syno-version prints.
+syno=$(sh build-srm-spk.sh --syno-version 9.9.9)
 check_print() {
     arch=$1
     model=$2
@@ -53,9 +55,12 @@ check_print() {
     if ! printf '%s\n' "$out" | grep -Fx "$model" >/dev/null; then
         fail "--print-target omitted model ${model}"
     fi
-    path="dist/tailscale-${arch}-9.9.9-srm1.3.spk"
+    path="dist/tailscale-${arch}-9.9.9-${syno}-srm1.3.spk"
     if ! printf '%s\n' "$out" | grep -Fx "$path" >/dev/null; then
         fail "--print-target omitted ${path}"
+    fi
+    if ! printf '%s\n' "$out" | grep -Fx "version=\"9.9.9-${syno}\"" >/dev/null; then
+        fail "--print-target INFO omitted version 9.9.9-${syno}"
     fi
     desc="description=\"Unofficial Tailscale package for the Synology ${model} (SRM 1.3).\""
     if ! printf '%s\n' "$out" | grep -Fx "$desc" >/dev/null; then
@@ -256,7 +261,7 @@ case "$out" in
 esac
 
 install=$(sed -n '/^## Install$/,/^## /p' README.md)
-hawkeye_spk='tailscale-hawkeye-<version>-srm1.3.spk'
+hawkeye_spk='tailscale-hawkeye-<version>-<syno>-srm1.3.spk'
 case "$install" in
     *"download \`${hawkeye_spk}\` from the Releases page"*) ;;
     *) fail "install docs do not point WRX560 at the release asset" ;;

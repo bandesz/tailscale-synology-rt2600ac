@@ -121,8 +121,11 @@ fi
 if [ "${1:-}" = "--print-target" ]; then
     resolve_srm_target
     printf '%s\n' "$router_model"
-    srm_spk_path "$srm_arch" "${2:?version required}"
-    srm_info "${2}"
+    ver="${2:?version required}"
+    syn=$(syno_version "$ver") || exit 1
+    preview="${ver}-${syn}"
+    srm_spk_path "$srm_arch" "$preview"
+    srm_info "$preview"
     exit 0
 fi
 
