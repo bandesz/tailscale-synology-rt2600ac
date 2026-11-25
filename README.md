@@ -8,7 +8,7 @@ Tailscale is [BSD-licensed](https://github.com/tailscale/tailscale/blob/main/LIC
 
 ## Why the official SPK does not install
 
-Tailscale publishes Synology packages for DSM 6 and DSM 7. Package Center on the RT2600ac rejects them:
+Tailscale publishes Synology packages for DSM 6 and DSM 7. Package Center on the RT2600ac and the WRX560 rejects them:
 
 - The router platform is `ipq806x` (RT2600ac) or `hawkeye` (WRX560). The DSM package says `armv7`.
 - SRM 1.3 reports a version such as `1.3.2-9366`. The DSM package requires DSM 6 or DSM 7.
@@ -20,7 +20,9 @@ Supported build targets are RT2600ac (`ipq806x`, the default) and WRX560 (`hawke
 
 ## Install
 
-For RT2600ac, download `tailscale-ipq806x-<version>-srm1.3.spk` from the Releases page of this repository, or build it yourself. For WRX560, build `tailscale-hawkeye-<version>-srm1.3.spk` using the instructions below.
+For the RT2600ac, download `tailscale-ipq806x-<version>-srm1.3.spk` from the Releases page of this repository, or build it yourself. For the WRX560, download `tailscale-hawkeye-<version>-srm1.3.spk` from the Releases page, or build it with the instructions below.
+
+The WRX560 needs a storage volume before the package can start. On the tested router, Package Center failed with "There is no volume" until a USB drive was attached. Operation without USB storage is not established.
 
 1. Open Package Center on the router.
 2. Set the trust level to **Any publisher**. The package is unsigned, which is the same situation as other unsigned SRM packages. The setting is under Package Center settings.
@@ -101,15 +103,15 @@ What the build does:
 4. Installs the lifecycle scripts in `srm/`.
 5. Cross-compiles a small CGI helper (`srm/cgiwrap`) for 32-bit ARM. SRM serves the admin UI with Apache, as the web user. `tailscaled` only accepts configuration changes from root or from its configured operator, so the helper is installed setuid root and then runs `tailscale web -cgi`.
 
-`mise run ci` is what GitHub Actions runs: shellcheck, a check of the Synology version numbering, and a full build.
+`mise run ci` runs shellcheck, the shell tests, and a build of the default arch. GitHub Actions runs the lint and tests once, then builds `ipq806x` and `hawkeye` separately.
 
 | Task | Purpose |
 | --- | --- |
 | `mise run lint` | shellcheck on the scripts |
 | `mise run test` | Synology version numbers, DNS off on start, LAN route advertisement, and the install routing choices |
-| `mise run build` | Download Tailscale and build the SPK |
-| `mise run ci` | lint, test, and build |
-| `mise run release` | Build and attach the SPK to a GitHub release |
+| `mise run build` | Download Tailscale and build the SPK for the selected arch (`ipq806x` by default) |
+| `mise run ci` | lint, test, and build the default arch |
+| `mise run release` | Build both SRM packages and attach them to a GitHub release |
 
 mise installs the two tools the build needs: Go (to cross-compile the CGI helper) and shellcheck. `curl` comes from the system.
 
@@ -157,6 +159,7 @@ Upgrades replace `target/`. On SRM that also removes `var/`, which is where Tail
 - Unsigned. Package Center must trust any publisher, or installation stops with a missing-signature error.
 - The web UI depends on SRM's Apache on port 8000. The menu URL is `3rdparty/Tailscale/index.cgi/` because the desktop is already under `/webman/`.
 - These SRM packages should not be upgraded using `tailscale update`. Upgrade by installing a newer SPK from this repository.
+- The WRX560 needs a storage volume. Without one, Package Center reports "There is no volume" and the package does not start. The tested installation used USB storage.
 
 ### WRX560 testing status
 

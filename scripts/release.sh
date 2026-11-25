@@ -63,23 +63,16 @@ The binaries are the upstream Tailscale armv7 DSM 7 build, repackaged for SRM.
 
 1. In Package Center, set the trust level to Any publisher.
 2. Choose Manual Install and select the SPK matching your router model.
-3. Start Tailscale and open its web UI from the SRM main menu.
-4. Log in if this is a new installation.
+3. Start Tailscale.
+4. Open it from the SRM main menu, or browse to http://<router>:8000/webman/3rdparty/Tailscale/index.cgi/.
 
 Starting the package disables Tailscale DNS acceptance so the router keeps
 its own resolver. LAN and exit-node advertisements follow the saved
 installation choices and require approval in the Tailscale admin console.
 
-## WRX560 testing
-
-Package installation, same-version upgrade, service stop/start, unattended
-reboot reconnection, SRM main-menu web UI access, and DERP peer connectivity
-were tested on SRM 1.3.2-9366 Update 3 with Tailscale 1.104.7.
-
-Testing used attached USB storage. Operation without it is not established.
-Package Center did not show an Open button; use the SRM main-menu entry.
-Reconnection requires a correct system clock.
-Direct peer connectivity and subnet/exit-node forwarding were not verified.
+The WRX560 needs a storage volume. Operation without USB storage is not
+established. Package Center may not show an Open button; use the SRM main
+menu or the address above. Reconnection requires a correct system clock.
 See README.md for the testing scope and limitations.
 EOF
 )
