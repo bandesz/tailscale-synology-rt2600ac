@@ -313,4 +313,21 @@ if ! grep -F 'needs:' .github/workflows/ci.yml >/dev/null; then
     fail "CI build job does not need the target list"
 fi
 
+fork=$(sed -n '/^## Adding another SRM router$/,/^## /p' README.md)
+if [ -z "$fork" ]; then
+    fail "README has no section for adding another SRM router"
+fi
+for needle in \
+    'srm/targets' \
+    'build-srm-spk.sh' \
+    'scripts/release.sh' \
+    '.github/workflows/ci.yml' \
+    'armv7'
+do
+    case "$fork" in
+        *"$needle"*) ;;
+        *) fail "fork guide stopped naming ${needle}" ;;
+    esac
+done
+
 echo "srm targets ok"

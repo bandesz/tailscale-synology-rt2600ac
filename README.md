@@ -16,7 +16,7 @@ Tailscale publishes Synology packages for DSM 6 and DSM 7. Package Center on the
 
 The armv7 DSM 7 binaries themselves run on these routers. People have confirmed that by unpacking the SPK and starting `tailscaled` by hand. This package is that same payload, with metadata and scripts Package Center understands, plus the changes SRM needs for the admin UI.
 
-Supported build targets are RT2600ac (`ipq806x`, the default) and WRX560 (`hawkeye`). Other SRM models are not supported. The RT6600ax, for example, is a 64-bit platform (`cypress`) and needs a different binary.
+Supported build targets are RT2600ac (`ipq806x`, the default) and WRX560 (`hawkeye`). Other SRM models are not supported. [Adding another SRM router](#adding-another-srm-router) is how a fork adds one. The RT6600ax, for example, is a 64-bit platform (`cypress`) and needs a different binary.
 
 ## Install
 
@@ -183,3 +183,50 @@ ARMv7 Linux 4.4.60 kernel, using Tailscale 1.104.7:
   Operation without USB storage has not been established.
 
 These results do not establish support for other SRM router models.
+
+## Adding another SRM router
+
+This repository ships packages for the RT2600ac and the WRX560. A fork
+adds and tests another SRM 1.3 router by adding one `arch model` row to
+`srm/targets`. The first row is the default when `SRM_ARCH` is unset.
+
+`build-srm-spk.sh`, `scripts/release.sh`, and `.github/workflows/ci.yml`
+already read `srm/targets`. Do not copy the router into those files.
+`test/srm-targets.sh` reads the same list.
+
+These pieces are shared:
+
+- The lifecycle scripts in `srm/`.
+- The armv7 DSM 7 payload.
+- `srm/cgiwrap`.
+- `os_min_ver` `1.3-9193`.
+
+These pieces are model-specific:
+
+- The INFO arch and the model name.
+- The package path `dist/tailscale-<arch>-<version>-srm1.3.spk`.
+- Device notes such as the storage volume, the Open button, and the clock,
+  in the README install and limitations text and in the release notes.
+  Those notes are prose in `scripts/release.sh`, next to the per-model
+  bullet that `srm/targets` already fills in.
+
+A 64-bit model such as the RT6600ax (`cypress`) is not a new row. This
+tree downloads the armv7 DSM 7 SPK only.
+
+Build the new arch with:
+
+```sh
+SRM_ARCH=<arch> mise run build -- <version>
+```
+
+Local checks are `mise run test` and
+`sh build-srm-spk.sh --print-target <version>`. Set `SRM_ARCH` on that
+print command when the row is not the default. `mise run ci` builds the
+default arch only. GitHub Actions builds every row.
+
+On the device, use the WRX560 results above as the checklist: manual
+install, same-version upgrade, stop/start, reboot and reconnect, clock,
+storage volume, and whether Package Center shows Open. Subnet and
+exit-node forwarding stay unverified until tried. Record model-specific
+failures in this README. The RT2600ac and the WRX560 do not cover the new
+router.
