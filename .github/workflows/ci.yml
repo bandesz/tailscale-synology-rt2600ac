@@ -14,12 +14,31 @@ jobs:
       - run: mise run lint
       - run: mise run test
 
+  targets:
+    runs-on: ubuntu-latest
+    outputs:
+      arch: ${{ steps.arches.outputs.arch }}
+    steps:
+      - uses: actions/checkout@v4
+      - id: arches
+        run: |
+          json='['
+          sep=''
+          while read -r arch _model; do
+            [ -n "$arch" ] || continue
+            json="${json}${sep}\"${arch}\""
+            sep=','
+          done < srm/targets
+          json="${json}]"
+          echo "arch=${json}" >> "$GITHUB_OUTPUT"
+
   build:
+    needs: targets
     runs-on: ubuntu-latest
     strategy:
       fail-fast: false
       matrix:
-        arch: [ipq806x, hawkeye]
+        arch: ${{ fromJSON(needs.targets.outputs.arch) }}
     env:
       SRM_ARCH: ${{ matrix.arch }}
     steps:

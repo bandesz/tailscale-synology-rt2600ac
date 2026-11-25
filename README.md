@@ -1,6 +1,6 @@
-# Tailscale for the Synology RT2600ac and WRX560
+# Tailscale for Synology SRM
 
-Unofficial [Tailscale](https://tailscale.com/) package for the Synology RT2600ac and WRX560 running SRM 1.3. It installs and runs from Package Center: install, start, stop, reboot, and upgrade, with the Tailscale web UI in the SRM main menu.
+Unofficial [Tailscale](https://tailscale.com/) packages for Synology routers running SRM 1.3. The supported models are the RT2600ac and the WRX560. A package installs and runs from Package Center: install, start, stop, reboot, and upgrade, with the Tailscale web UI in the SRM main menu.
 
 This is not a Tailscale or Synology product. The `tailscale` and `tailscaled` binaries are Tailscale's own armv7 DSM 7 build, downloaded at build time from [pkgs.tailscale.com](https://pkgs.tailscale.com/stable/). This repository repackages them so SRM will accept the package.
 
@@ -14,7 +14,7 @@ Tailscale publishes Synology packages for DSM 6 and DSM 7. Package Center on the
 - SRM 1.3 reports a version such as `1.3.2-9366`. The DSM package requires DSM 6 or DSM 7.
 - The sideload packages are unsigned. With the default trust level, Package Center reports that the package does not contain a digital signature. Synology does not publish a key that third parties can sign with.
 
-The armv7 DSM 7 binaries themselves run on this router. People have confirmed that by unpacking the SPK and starting `tailscaled` by hand. This package is that same payload, with metadata and scripts Package Center understands, plus the changes SRM needs for the admin UI.
+The armv7 DSM 7 binaries themselves run on these routers. People have confirmed that by unpacking the SPK and starting `tailscaled` by hand. This package is that same payload, with metadata and scripts Package Center understands, plus the changes SRM needs for the admin UI.
 
 Supported build targets are RT2600ac (`ipq806x`, the default) and WRX560 (`hawkeye`). Other SRM models are not supported. The RT6600ax, for example, is a 64-bit platform (`cypress`) and needs a different binary.
 

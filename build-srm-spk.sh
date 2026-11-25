@@ -1,21 +1,23 @@
 #!/bin/sh
-# Build an RT2600ac or WRX560 SRM 1.3 package from Tailscale's armv7 DSM 7 SPK.
+# Build a Synology SRM 1.3 package from Tailscale's armv7 DSM 7 SPK.
 #
 # The DSM packages declare arch "armv7" and a DSM 6/7 minimum version, so
 # SRM never accepts them. This writes a package Package Center can install
 # on SRM 1.3: platform-specific arch, os_min_ver 1.3-9193, and the standard
 # install/upgrade/start scripts. No signature is added. Synology does not
-# publish a signing key, and the SRM packages that install on this router
+# publish a signing key, and the SRM packages that install on these routers
 # are unsigned.
 #
-# Usage: [SRM_ARCH=ipq806x|hawkeye] build-srm-spk.sh [version]
-#   SRM_ARCH  Target platform: ipq806x (RT2600ac, default) or hawkeye (WRX560).
+# Usage: [SRM_ARCH=<arch>] build-srm-spk.sh [version]
+#   SRM_ARCH  Platform from srm/targets. Omit it to use the first row.
 #   version   Tailscale release, such as 1.104.7. Omit it to use the latest
 #             stable GitHub release. The armv7 DSM 7 SPK is downloaded from
 #             https://pkgs.tailscale.com/stable/ and checked against the
 #             published SHA-256.
 #   --syno-version VERSION
 #             Print the Synology build number for VERSION and exit.
+#   --print-target VERSION
+#             Print the model, SPK path, and INFO for VERSION, then exit.
 set -eu
 
 # Split MAJOR.MINOR.PATCH into the globals major, minor, and patch.
@@ -61,12 +63,66 @@ syno_version_legacy() {
     echo $((7 * 1000000000 + (major - 1) * 1000000 + minor * 1000 + patch))
 }
 
+# srm/targets is one "<arch> <model>" row per line. The first row is the default.
+resolve_srm_target() {
+    targets=$(dirname "$0")/srm/targets
+    srm_arch=${SRM_ARCH:-}
+    router_model=
+    allowed=
+    while read -r arch model; do
+        [ -n "$arch" ] || continue
+        if [ -z "$allowed" ]; then
+            allowed=$arch
+        else
+            allowed="${allowed} or ${arch}"
+        fi
+        if [ -z "$srm_arch" ]; then
+            srm_arch=$arch
+            router_model=$model
+        elif [ "$arch" = "$srm_arch" ] && [ -z "$router_model" ]; then
+            router_model=$model
+        fi
+    done <"$targets"
+    if [ -z "$router_model" ]; then
+        echo "unsupported SRM_ARCH: ${srm_arch}; use ${allowed}" >&2
+        exit 1
+    fi
+}
+
+srm_spk_path() {
+    printf 'dist/tailscale-%s-%s-srm1.3.spk\n' "$1" "$2"
+}
+
+srm_info() {
+    cat <<EOF
+package="Tailscale"
+version="${1}"
+description="Unofficial Tailscale package for the Synology ${router_model} (SRM 1.3)."
+displayname="Tailscale"
+maintainer="synology-tailscale"
+maintainer_url="https://github.com/tailscale/tailscale"
+arch="${srm_arch}"
+os_min_ver="1.3-9193"
+dsmuidir="ui"
+dsmappname="SYNO.SDS.Tailscale"
+startstop_restart_services="nginx"
+reloadui="yes"
+EOF
+}
+
 if [ "${1:-}" = "--syno-version" ]; then
     syno_version "${2:?version required}"
     exit 0
 fi
 if [ "${1:-}" = "--syno-version-legacy" ]; then
     syno_version_legacy "${2:?version required}"
+    exit 0
+fi
+if [ "${1:-}" = "--print-target" ]; then
+    resolve_srm_target
+    printf '%s\n' "$router_model"
+    srm_spk_path "$srm_arch" "${2:?version required}"
+    srm_info "${2}"
     exit 0
 fi
 
@@ -168,15 +224,7 @@ download_spk() {
 if [ "${0##*/}" = "build-srm-spk.sh" ]; then
 cd "$(dirname "$0")"
 
-srm_arch=${SRM_ARCH:-ipq806x}
-case "$srm_arch" in
-    ipq806x) router_model=RT2600ac ;;
-    hawkeye) router_model=WRX560 ;;
-    *)
-        echo "unsupported SRM_ARCH: ${srm_arch}; use ipq806x or hawkeye" >&2
-        exit 1
-        ;;
-esac
+resolve_srm_target
 
 version=${1:-${TAILSCALE_VERSION:-}}
 if [ -z "$version" ]; then
@@ -251,23 +299,10 @@ stage_wizard "$stage"
 # dsmuidir is where Package Center reads the menu config. The start script
 # copies those files into /usr/syno/synoman/webman/3rdparty/, which is what
 # Apache on port 8000 serves. dsmappname is the Open button.
-cat >"$stage/INFO" <<EOF
-package="Tailscale"
-version="${upstream_version}"
-description="Unofficial Tailscale package for the Synology ${router_model} (SRM 1.3)."
-displayname="Tailscale"
-maintainer="synology-tailscale"
-maintainer_url="https://github.com/tailscale/tailscale"
-arch="${srm_arch}"
-os_min_ver="1.3-9193"
-dsmuidir="ui"
-dsmappname="SYNO.SDS.Tailscale"
-startstop_restart_services="nginx"
-reloadui="yes"
-EOF
+srm_info "$upstream_version" >"$stage/INFO"
 
 mkdir -p dist
-out="dist/tailscale-${srm_arch}-${upstream_version}-srm1.3.spk"
+out=$(srm_spk_path "$srm_arch" "$upstream_version")
 rm -f "$out"
 pack_ustar -cf "$out" -C "$stage" \
     INFO \
