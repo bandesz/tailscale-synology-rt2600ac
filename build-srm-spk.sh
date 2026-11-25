@@ -8,8 +8,8 @@
 # publish a signing key, and the SRM packages that install on these routers
 # are unsigned.
 #
-# Usage: [SRM_ARCH=<arch>] build-srm-spk.sh [version]
-#   SRM_ARCH  Platform from srm/targets. Omit it to use the first row.
+# Usage: SRM_ARCH=<arch> build-srm-spk.sh [version]
+#   SRM_ARCH  Platform from srm/targets. Required. There is no default.
 #   version   Tailscale release, such as 1.104.7. Omit it to use the latest
 #             stable GitHub release. The armv7 DSM 7 SPK is downloaded from
 #             https://pkgs.tailscale.com/stable/ and checked against the
@@ -63,7 +63,7 @@ syno_version_legacy() {
     echo $((7 * 1000000000 + (major - 1) * 1000000 + minor * 1000 + patch))
 }
 
-# srm/targets is one "<arch> <model>" row per line. The first row is the default.
+# srm/targets is one "<arch> <model>" row per line. SRM_ARCH selects the row.
 resolve_srm_target() {
     targets=$(dirname "$0")/srm/targets
     srm_arch=${SRM_ARCH:-}
@@ -76,13 +76,14 @@ resolve_srm_target() {
         else
             allowed="${allowed} or ${arch}"
         fi
-        if [ -z "$srm_arch" ]; then
-            srm_arch=$arch
-            router_model=$model
-        elif [ "$arch" = "$srm_arch" ] && [ -z "$router_model" ]; then
+        if [ -n "$srm_arch" ] && [ "$arch" = "$srm_arch" ] && [ -z "$router_model" ]; then
             router_model=$model
         fi
     done <"$targets"
+    if [ -z "$srm_arch" ]; then
+        echo "SRM_ARCH is required; use ${allowed}" >&2
+        exit 1
+    fi
     if [ -z "$router_model" ]; then
         echo "unsupported SRM_ARCH: ${srm_arch}; use ${allowed}" >&2
         exit 1

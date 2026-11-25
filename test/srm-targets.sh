@@ -86,22 +86,39 @@ while read -r arch model; do
     check_print "$arch" "$model" "$out"
 done < srm/targets
 
-first_arch=
-first_model=
+: >"$tmp/curl-log"
+if PATH="$tmp/bin:$PATH" CURL_LOG="$tmp/curl-log" \
+    env -u SRM_ARCH sh build-srm-spk.sh --print-target 9.9.9 \
+    >"$tmp/print-out" 2>"$tmp/print-err"; then
+    fail "accepted --print-target with no SRM_ARCH"
+fi
+if ! grep -F 'SRM_ARCH is required' "$tmp/print-err" >/dev/null; then
+    cat "$tmp/print-err" >&2
+    fail "missing SRM_ARCH did not explain the failure"
+fi
 while read -r arch model; do
     [ -n "$arch" ] || continue
-    first_arch=$arch
-    first_model=$model
-    break
+    if ! grep -F "$arch" "$tmp/print-err" >/dev/null; then
+        fail "missing SRM_ARCH did not list ${arch} (${model})"
+    fi
 done < srm/targets
-: >"$tmp/curl-log"
-if ! out=$(PATH="$tmp/bin:$PATH" CURL_LOG="$tmp/curl-log" \
-    env -u SRM_ARCH sh build-srm-spk.sh --print-target 9.9.9 \
-    2>"$tmp/print-err"); then
-    cat "$tmp/print-err" >&2
-    fail "--print-target rejected the default target"
+if [ -s "$tmp/curl-log" ]; then
+    fail "missing SRM_ARCH tried to download an upstream SPK"
 fi
-check_print "$first_arch" "$first_model" "$out"
+
+: >"$tmp/curl-log"
+if PATH="$tmp/bin:$PATH" CURL_LOG="$tmp/curl-log" \
+    SRM_ARCH='' sh build-srm-spk.sh 1.2.3 \
+    >"$tmp/arch-out" 2>"$tmp/arch-err"; then
+    fail "accepted a build with an empty SRM_ARCH"
+fi
+if ! grep -F 'SRM_ARCH is required' "$tmp/arch-err" >/dev/null; then
+    cat "$tmp/arch-err" >&2
+    fail "empty SRM_ARCH did not explain the failure"
+fi
+if [ -s "$tmp/curl-log" ]; then
+    fail "empty SRM_ARCH tried to download an upstream SPK"
+fi
 
 if ! grep -F 'srm/targets' build-srm-spk.sh >/dev/null; then
     fail "build script does not read srm/targets"
@@ -291,6 +308,47 @@ fi
 if ! grep -F 'test/srm-targets.sh' mise.toml >/dev/null; then
     fail "mise does not run test/srm-targets.sh"
 fi
+if ! grep -F 'scripts/build-each.sh' mise.toml >/dev/null; then
+    fail "mise ci does not build every target"
+fi
+if ! grep -F 'Lint, test, and build every SRM package' mise.toml >/dev/null; then
+    fail "mise ci still describes a single-arch build"
+fi
+if grep -F 'by default' README.md >/dev/null; then
+    fail "README still names a default arch"
+fi
+if grep -F 'first row is the default' README.md >/dev/null; then
+    fail "README still treats the first target row as the default"
+fi
+if grep -F 'default arch' README.md >/dev/null; then
+    fail "README still describes a default arch"
+fi
+if ! grep -F 'SRM_ARCH=ipq806x mise run build -- 1.104.7' README.md >/dev/null; then
+    fail "README omits the RT2600ac build command"
+fi
+if ! grep -F 'SRM_ARCH=hawkeye mise run build -- 1.104.7' README.md >/dev/null; then
+    fail "README omits the WRX560 build command"
+fi
+
+mkdir -p "$tmp/each/scripts" "$tmp/each/srm"
+cp scripts/build-each.sh "$tmp/each/scripts/build-each.sh"
+cp srm/targets "$tmp/each/srm/targets"
+cat >"$tmp/each/build-srm-spk.sh" <<'EOF'
+#!/bin/sh
+printf '%s %s\n' "${SRM_ARCH:-unset}" "${1:-}" >>"${BUILD_LOG:?}"
+EOF
+chmod +x "$tmp/each/build-srm-spk.sh"
+: >"$tmp/each-log"
+BUILD_LOG="$tmp/each-log" sh "$tmp/each/scripts/build-each.sh" 9.9.9
+expected_each=$(awk 'NF { print $1 " 9.9.9" }' srm/targets)
+got_each=$(cat "$tmp/each-log")
+if [ "$got_each" != "$expected_each" ]; then
+    printf 'build-each invocations:\n%s\n' "$got_each" >&2
+    fail "build-each did not build every target with the same version"
+fi
+case "$got_each" in
+    *unset*) fail "build-each invoked a build with no SRM_ARCH" ;;
+esac
 
 if grep -F 'mise run ci' .github/workflows/ci.yml >/dev/null; then
     fail "CI still runs lint and test once per architecture"
@@ -374,6 +432,8 @@ for needle in \
     '.github/workflows/ci.yml' \
     'armv7' \
     'SRM_ARCH=<arch> mise run build -- <version>' \
+    'SRM_ARCH is required' \
+    'mise run ci builds every row' \
     'These pieces are shared:' \
     'These pieces are model-specific:' \
     'manual install' \

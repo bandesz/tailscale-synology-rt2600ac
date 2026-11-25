@@ -16,7 +16,7 @@ Tailscale publishes Synology packages for DSM 6 and DSM 7. Package Center on the
 
 The armv7 DSM 7 binaries themselves run on these routers. People have confirmed that by unpacking the SPK and starting `tailscaled` by hand. This package is that same payload, with metadata and scripts Package Center understands, plus the changes SRM needs for the admin UI.
 
-Supported build targets are RT2600ac (`ipq806x`, the default) and WRX560 (`hawkeye`). Other SRM models are not supported. [Adding another SRM router](#adding-another-srm-router) is how a fork adds one. The RT6600ax, for example, is a 64-bit platform (`cypress`) and needs a different binary.
+Supported build targets are the RT2600ac (`ipq806x`) and the WRX560 (`hawkeye`). Other SRM models are not supported. [Adding another SRM router](#adding-another-srm-router) is how a fork adds one. The RT6600ax, for example, is a 64-bit platform (`cypress`) and needs a different binary.
 
 ## Install
 
@@ -76,24 +76,11 @@ Install [mise](https://mise.jdx.dev/), then, from this directory:
 
 ```sh
 mise install
-mise run build
-```
-
-`mise run build` with no arguments packages the latest stable Tailscale release. To package a specific release:
-
-```sh
-mise run build -- 1.104.7
-```
-
-The default target remains RT2600ac (`ipq806x`). To build for WRX560:
-
-```sh
+SRM_ARCH=ipq806x mise run build -- 1.104.7
 SRM_ARCH=hawkeye mise run build -- 1.104.7
 ```
 
-You can also invoke the build script directly with `SRM_ARCH=hawkeye`.
-Target selection changes the package metadata and output filename; both
-targets use the upstream armv7 DSM 7 payload and the ARMv7 CGI helper.
+`SRM_ARCH` is required. Omit the version to package the latest stable Tailscale release for that arch. You can also invoke `build-srm-spk.sh` directly with `SRM_ARCH` set. Target selection changes the package metadata and output filename. Every target uses the upstream armv7 DSM 7 payload and the ARMv7 CGI helper.
 
 The SPK is written to `dist/`. Downloaded upstream packages are cached in `cache/` after their published SHA-256 is checked. Neither directory is part of the source tree.
 
@@ -105,14 +92,14 @@ What the build does:
 4. Installs the lifecycle scripts in `srm/`.
 5. Cross-compiles a small CGI helper (`srm/cgiwrap`) for 32-bit ARM. SRM serves the admin UI with Apache, as the web user. `tailscaled` only accepts configuration changes from root or from its configured operator, so the helper is installed setuid root and then runs `tailscale web -cgi`.
 
-`mise run ci` runs shellcheck, the shell tests, and a build of the default arch. GitHub Actions runs the lint and tests once, then builds `ipq806x` and `hawkeye` separately.
+`mise run ci` runs shellcheck, the shell tests, and a build of every row in `srm/targets`. GitHub Actions runs the lint and tests once, then builds each of those rows in its own job.
 
 | Task | Purpose |
 | --- | --- |
 | `mise run lint` | shellcheck on the scripts |
 | `mise run test` | Synology version numbers, DNS off on start, LAN route advertisement, and the install routing choices |
-| `mise run build` | Download Tailscale and build the SPK for the selected arch (`ipq806x` by default) |
-| `mise run ci` | lint, test, and build the default arch |
+| `mise run build` | Download Tailscale and build the SPK for `SRM_ARCH` |
+| `mise run ci` | lint, test, and build every SRM package |
 | `mise run release` | Build both SRM packages and attach them to a GitHub release |
 
 mise installs the two tools the build needs: Go (to cross-compile the CGI helper) and shellcheck. `curl` comes from the system.
@@ -190,10 +177,11 @@ These results do not establish support for other SRM router models.
 
 This repository ships packages for the RT2600ac and the WRX560. A fork
 adds and tests another SRM 1.3 router by adding one `arch model` row to
-`srm/targets`. The first row is the default when `SRM_ARCH` is unset.
+`srm/targets`. SRM_ARCH is required. Name the arch from that file.
 
-`build-srm-spk.sh`, `scripts/release.sh`, and `.github/workflows/ci.yml`
-already read `srm/targets`. Do not copy the router into those files.
+`build-srm-spk.sh`, `scripts/build-each.sh`, `scripts/release.sh`, and
+`.github/workflows/ci.yml` already read `srm/targets`. Do not copy the
+router into those files.
 `test/srm-targets.sh` reads the same list.
 
 These pieces are shared:
@@ -222,9 +210,8 @@ SRM_ARCH=<arch> mise run build -- <version>
 ```
 
 Local checks are `mise run test` and
-`sh build-srm-spk.sh --print-target <version>`. Set `SRM_ARCH` on that
-print command when the row is not the default. `mise run ci` builds the
-default arch only. GitHub Actions builds every row.
+`SRM_ARCH=<arch> sh build-srm-spk.sh --print-target <version>`.
+mise run ci builds every row. GitHub Actions builds every row.
 
 On the device, use the WRX560 results above as the checklist: manual
 install, same-version upgrade, stop/start, reboot and reconnect, clock,
