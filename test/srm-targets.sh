@@ -313,18 +313,70 @@ if ! grep -F 'needs:' .github/workflows/ci.yml >/dev/null; then
     fail "CI build job does not need the target list"
 fi
 
+# Run the workflow's arch script. The loop lives in ci.yml; stripping
+# the YAML indent is enough to execute it.
+awk '
+    $1 == "-" && $2 == "id:" && $3 == "arches" { in_step = 1; next }
+    in_step && !in_run && $0 ~ /^[[:space:]]*$/ { next }
+    in_step && !in_run && $1 == "run:" && $2 == "|" { in_run = 1; next }
+    in_step && !in_run { exit }
+    in_run {
+        if (!started) {
+            if ($0 ~ /^[[:space:]]*$/) {
+                next
+            }
+            match($0, /^[[:space:]]+/)
+            indent = RLENGTH
+            started = 1
+        }
+        if ($0 ~ /^[[:space:]]*$/) {
+            print ""
+            next
+        }
+        match($0, /^[[:space:]]*/)
+        if (RLENGTH < indent) {
+            exit
+        }
+        print substr($0, indent + 1)
+    }
+' .github/workflows/ci.yml >"$tmp/arches.sh"
+if [ ! -s "$tmp/arches.sh" ]; then
+    fail "could not extract the targets job arch script"
+fi
+: >"$tmp/github-output"
+if ! GITHUB_OUTPUT="$tmp/github-output" sh "$tmp/arches.sh"; then
+    fail "targets job arch script failed"
+fi
+got_arch=$(awk -F= '$1 == "arch" { print substr($0, length($1) + 2) }' "$tmp/github-output")
+expected_json=$(awk '
+    NF { printf "%s\"%s\"", (n++ ? "," : ""), $1 }
+' srm/targets)
+expected_json="[${expected_json}]"
+if [ "$got_arch" != "$expected_json" ]; then
+    fail "CI arch list is ${got_arch}, want ${expected_json}"
+fi
+
 fork=$(sed -n '/^## Adding another SRM router$/,/^## /p' README.md)
 if [ -z "$fork" ]; then
     fail "README has no section for adding another SRM router"
 fi
+# Prose wraps mid-phrase, so match the section as one line.
+fork_text=$(printf '%s\n' "$fork" | tr -s '[:space:]' ' ')
 for needle in \
     'srm/targets' \
     'build-srm-spk.sh' \
     'scripts/release.sh' \
     '.github/workflows/ci.yml' \
-    'armv7'
+    'armv7' \
+    'SRM_ARCH=<arch> mise run build -- <version>' \
+    'These pieces are shared:' \
+    'These pieces are model-specific:' \
+    'manual install' \
+    'same-version upgrade' \
+    'stop/start' \
+    'reboot'
 do
-    case "$fork" in
+    case "$fork_text" in
         *"$needle"*) ;;
         *) fail "fork guide stopped naming ${needle}" ;;
     esac
